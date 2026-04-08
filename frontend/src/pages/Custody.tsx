@@ -26,7 +26,7 @@ export default function Custody() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [handleError]);
 
   const handleVerify = async () => {
     setVerifying(true);
