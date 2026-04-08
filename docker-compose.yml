@@ -20,7 +20,7 @@ services:
   minio:
     # RELEASE.2025-10-15T17-29-55Z is the last Community Edition image published
     # to Docker Hub by MinIO. For newer builds see https://github.com/golithus/minio-builds
-    image: minio/minio:RELEASE.2025-10-15T17-29-55Z
+    image: minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
