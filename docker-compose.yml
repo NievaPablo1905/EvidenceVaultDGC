@@ -56,6 +56,18 @@ services:
     volumes:
       - ./backend:/app
 
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - api
+
 volumes:
   postgres_data:
   minio_data:
