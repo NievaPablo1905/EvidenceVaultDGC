@@ -8,28 +8,29 @@ Sistema interno de registro y gestión de evidencia digital con cadena de custod
 
 ## Stack
 
-| Component  | Technology                                |
+| Componente | Tecnología                                |
 |------------|-------------------------------------------|
 | Backend    | Python 3.11 + FastAPI                     |
-| Database   | PostgreSQL 15 (metadata + audit log)      |
-| Storage    | MinIO (evidence blobs, S3-compatible)     |
-| Auth       | Local users, JWT (HS256)                  |
-| Migrations | Alembic                                   |
+| Frontend   | React 19 + Vite + TypeScript (MVP UI)     |
+| Base datos | PostgreSQL 15 (metadatos + auditoría)     |
+| Storage    | MinIO (archivos de evidencia, S3-compatible) |
+| Auth       | Usuarios locales, JWT (HS256)             |
+| Migraciones| Alembic                                   |
 | Runtime    | Docker Compose                            |
 
 ---
 
-## Security notes
+## Notas de seguridad
 
-- All services bind to **127.0.0.1** by default; access via VPN only.
-- Currently configured for **HTTP** (internal lab). Apply TLS termination (nginx/Traefik) before exposing over any untrusted network.
-- The bootstrap endpoint (`POST /api/dev/bootstrap`) is **dev-only**; disable it by setting `DEV_BOOTSTRAP_ENABLED=false` in production.
+- Todos los servicios escuchan en **127.0.0.1** por defecto; el acceso es solo por VPN.
+- Configurado para **HTTP** (lab interno). Aplicar TLS (nginx/Traefik) antes de exponer en redes no confiables.
+- El endpoint de bootstrap (`POST /api/dev/bootstrap`) es **solo para desarrollo**; deshabilítelo poniendo `DEV_BOOTSTRAP_ENABLED=false` en producción.
 
 ---
 
-## Quickstart
+## Inicio rápido
 
-### 1. Clone & configure
+### 1. Clonar y configurar
 
 ```bash
 git clone https://github.com/NievaPablo1905/EvidenceVaultDGC.git
@@ -37,87 +38,145 @@ cd EvidenceVaultDGC
 cp .env.example .env
 ```
 
-Edit `.env` and set strong values for:
+Edite `.env` y ponga valores seguros para:
 - `POSTGRES_PASSWORD`
 - `MINIO_ROOT_PASSWORD`
-- `SECRET_KEY` → generate with `python -c "import secrets; print(secrets.token_hex(32))"`
+- `SECRET_KEY` → generar con `python -c "import secrets; print(secrets.token_hex(32))"`
 
-### 2. Start services
+### 2. Levantar todos los servicios (API + DB + MinIO + Web UI)
 
 ```bash
 docker compose up --build -d
 ```
 
-Wait for all services to be healthy:
+Espere a que todos los servicios estén sanos:
 
 ```bash
 docker compose ps
 ```
 
-### 3. Bootstrap the first admin user
+Servicios disponibles:
+- **Web UI:** http://localhost:3000
+- **API (Swagger):** http://localhost:8000/docs
+- **MinIO Console:** http://localhost:9001
 
-> ⚠️ **Dev-only endpoint.** Disable after first use by setting `DEV_BOOTSTRAP_ENABLED=false`.
+### 3. Crear el primer usuario administrador (solo desarrollo)
 
+> ⚠️ **Endpoint solo para desarrollo.** Deshabilítelo después del primer uso poniendo `DEV_BOOTSTRAP_ENABLED=false`.
+
+**Linux/macOS:**
 ```bash
 curl -s -X POST http://localhost:8000/api/dev/bootstrap \
   -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "S3cur3P@ssw0rd!", "full_name": "Administrador"}'
 ```
 
-### 4. Log in and obtain a token
+**Windows (PowerShell):**
+```powershell
+$body = @{
+  username  = "admin"
+  password  = "S3cur3P@ssw0rd!"
+  full_name = "Administrador"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post "http://localhost:8000/api/dev/bootstrap" `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+### 4. Usar la interfaz web
+
+1. Abra **http://localhost:3000** en su navegador.
+2. Inicie sesión con el usuario `admin` creado en el paso anterior.
+3. Desde la interfaz puede:
+   - **Casos:** crear casos, ver listado.
+   - **Evidencias:** dentro de cada caso, subir cualquier tipo de archivo (pdf, zip, pcap, jpg, png, log, txt, etc.), ver metadatos, descargar con verificación SHA-256.
+   - **Cadena de custodia:** ver todos los eventos y ejecutar "Verificar Integridad".
+4. Use el botón **Salir** para cerrar sesión.
+
+---
+
+## Flujo operativo
+
+### Crear un caso
+1. Haga clic en **+ Nuevo Caso**.
+2. Complete título (obligatorio), descripción y base legal.
+3. Confirme con **Crear Caso**.
+
+### Subir evidencia
+1. Abra el caso deseado.
+2. Haga clic en **↑ Subir Evidencia**.
+3. Seleccione el archivo (sin restricción de tipo).
+4. Complete la descripción/fuente y la herramienta utilizada (opcional).
+5. Confirme con **Subir Evidencia**.
+
+### Descargar evidencia
+- En la lista de evidencias del caso, haga clic en **↓ Descargar**.
+- O abra el detalle del archivo (clic en el nombre) y use el botón de descarga.
+- El sistema registra el evento de descarga en la cadena de custodia.
+
+### Verificar integridad de la cadena
+1. Vaya a la sección **Custodia**.
+2. Haga clic en **✅ Verificar Integridad**.
+3. El resultado mostrará si la cadena está íntegra o si hay inconsistencias.
+
+---
+
+## Uso via API (curl / PowerShell)
+
+### Login y obtener token
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login \
   -d "username=admin&password=S3cur3P@ssw0rd!" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-echo "Token: $TOKEN"
 ```
 
-### 5. Create a case
+### Crear caso
 
 ```bash
 curl -s -X POST http://localhost:8000/api/cases/ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"title": "Caso 2024-001", "description": "Análisis de dispositivo incautado", "legal_basis": "Ley 27411 / Art. 309 sexies CPPN"}'
+  -d '{"title": "Caso 2024-001", "description": "Análisis de dispositivo incautado", "legal_basis": "Ley 27411"}'
 ```
 
-### 6. Upload evidence
+### Subir evidencia
 
 ```bash
 curl -s -X POST http://localhost:8000/api/cases/1/evidence/ \
   -H "Authorization: Bearer $TOKEN" \
-  -F "file=@/path/to/evidence.pcap" \
+  -F "file=@/ruta/al/archivo.pcap" \
   -F "source_description=Captura de red — dispositivo incautado ID-001" \
   -F "tool_name=tcpdump" \
   -F "tool_version=4.99.1"
 ```
 
-### 7. Download evidence (logs custody event)
+### Descargar evidencia
 
 ```bash
 curl -OJ -H "Authorization: Bearer $TOKEN" \
   http://localhost:8000/api/cases/1/evidence/1/download
 ```
 
-The response header `X-Evidence-SHA256` contains the stored hash for integrity verification.
+El header `X-Evidence-SHA256` contiene el hash almacenado para verificación de integridad.
 
-### 8. View chain-of-custody log
+### Ver cadena de custodia
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
   http://localhost:8000/api/custody/ | python3 -m json.tool
 ```
 
-### 9. Verify chain integrity (auditor/admin)
+### Verificar integridad de la cadena
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
   http://localhost:8000/api/custody/verify | python3 -m json.tool
 ```
 
-### 10. Health check
+### Health check
 
 ```bash
 curl -s http://localhost:8000/api/health/ | python3 -m json.tool
@@ -127,52 +186,52 @@ curl -s http://localhost:8000/api/health/ | python3 -m json.tool
 
 ## Roles
 
-| Role       | Create case | Upload evidence | Download | View custody log | Verify chain | Create users |
-|------------|:-----------:|:---------------:|:--------:|:----------------:|:------------:|:------------:|
-| operator   | ✅          | ✅              | ✅       | ❌               | ❌           | ❌           |
-| supervisor | ✅          | ✅              | ✅       | ✅               | ❌           | ❌           |
-| auditor    | ❌          | ❌              | ✅       | ✅               | ✅           | ❌           |
-| admin      | ✅          | ✅              | ✅       | ✅               | ✅           | ✅           |
+| Rol        | Crear caso | Subir evidencia | Descargar | Ver custodia | Verificar cadena | Crear usuarios |
+|------------|:----------:|:---------------:|:---------:|:------------:|:----------------:|:--------------:|
+| operator   | ✅         | ✅              | ✅        | ❌           | ❌               | ❌             |
+| supervisor | ✅         | ✅              | ✅        | ✅           | ❌               | ❌             |
+| auditor    | ❌         | ❌              | ✅        | ✅           | ✅               | ❌             |
+| admin      | ✅         | ✅              | ✅        | ✅           | ✅               | ✅             |
 
 ---
 
-## API Documentation
+## Documentación API
 
-Interactive Swagger UI available at: `http://localhost:8000/docs`
+Swagger UI interactivo: `http://localhost:8000/docs`
 
 ReDoc: `http://localhost:8000/redoc`
 
 ---
 
-## Chain-of-Custody design
+## Diseño de la cadena de custodia
 
-Every significant action appends an immutable `CustodyEvent` record containing:
+Cada acción relevante agrega un registro inmutable `CustodyEvent` que contiene:
 
-- `action` — what happened (e.g., `INGEST_EVIDENCE`, `DOWNLOAD_EVIDENCE`)
-- `actor_id` / `actor_role` — who performed the action
-- `timestamp_utc` — when (UTC)
-- `source_ip` — originating IP address
-- `prev_event_hash` — SHA-256 of the previous event (hash chaining)
-- `event_hash` — SHA-256 of this event's canonical JSON
+- `action` — qué sucedió (ej. `INGEST_EVIDENCE`, `DOWNLOAD_EVIDENCE`)
+- `actor_id` / `actor_role` — quién realizó la acción
+- `timestamp_utc` — cuándo (UTC)
+- `source_ip` — IP de origen
+- `prev_event_hash` — SHA-256 del evento anterior (encadenamiento por hash)
+- `event_hash` — SHA-256 del JSON canónico de este evento
 
-The `GET /api/custody/verify` endpoint walks the entire chain and reports any hash mismatches, enabling detection of tampering.
+El endpoint `GET /api/custody/verify` recorre toda la cadena y reporta cualquier discrepancia de hash, permitiendo detectar manipulaciones.
 
 ---
 
-## Database migrations
+## Migraciones de base de datos
 
-Run manually if needed:
+Si es necesario ejecutarlas manualmente:
 
 ```bash
 cd backend
 alembic upgrade head
 ```
 
-Migrations are run automatically on container start.
+Las migraciones se ejecutan automáticamente al iniciar el contenedor.
 
 ---
 
-## Project structure
+## Estructura del proyecto
 
 ```
 EvidenceVaultDGC/
@@ -180,6 +239,23 @@ EvidenceVaultDGC/
 ├── .env.example
 ├── .gitignore
 ├── README.md
+├── frontend/                    ← Interfaz web (React + Vite + TypeScript)
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── src/
+│       ├── main.tsx
+│       ├── App.tsx
+│       ├── Layout.tsx
+│       ├── api.ts               # Cliente HTTP (axios)
+│       ├── components.tsx       # Componentes reutilizables
+│       ├── styles.css
+│       └── pages/
+│           ├── Login.tsx
+│           ├── Cases.tsx
+│           ├── CaseDetail.tsx
+│           └── Custody.tsx
 └── backend/
     ├── Dockerfile
     ├── requirements.txt
@@ -191,23 +267,23 @@ EvidenceVaultDGC/
     └── app/
         ├── main.py
         ├── core/
-        │   ├── config.py        # Settings from env
+        │   ├── config.py        # Settings desde env
         │   └── security.py      # JWT + bcrypt
         ├── db/
         │   ├── session.py       # SQLAlchemy engine/session
-        │   └── models.py        # ORM models
-        ├── schemas/             # Pydantic schemas
+        │   └── models.py        # Modelos ORM
+        ├── schemas/             # Schemas Pydantic
         ├── services/
-        │   ├── storage.py       # MinIO wrapper
-        │   └── audit.py         # Chain-of-custody service
+        │   ├── storage.py       # Wrapper MinIO
+        │   └── audit.py         # Servicio de cadena de custodia
         └── api/
-            ├── deps.py          # Auth dependencies + RBAC
+            ├── deps.py          # Dependencias auth + RBAC
             └── routes/
                 ├── auth.py      # POST /auth/login
-                ├── dev.py       # POST /dev/bootstrap  [DEV ONLY]
-                ├── users.py     # User management
-                ├── cases.py     # Case management
-                ├── evidence.py  # Evidence ingest/download
-                ├── custody.py   # Audit log endpoints
+                ├── dev.py       # POST /dev/bootstrap  [SOLO DEV]
+                ├── users.py     # Gestión de usuarios
+                ├── cases.py     # Gestión de casos
+                ├── evidence.py  # Ingesta/descarga de evidencia
+                ├── custody.py   # Endpoints de auditoría
                 └── health.py    # GET /health/
 ```
